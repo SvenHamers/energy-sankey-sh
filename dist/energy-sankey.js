@@ -1,4 +1,4 @@
-var version = "1.0.4-2-g35362c4*";
+var version = "1.0.4-3-g2d95607*";
 var repository = {
 	url: "https://github.com/davet2001/homeassistant-energy-sankey-card"
 };
@@ -6793,9 +6793,8 @@ let RadialPowerFlowCard = class RadialPowerFlowCard extends ElecFlowCardBase {
         return 3;
     }
     setConfig(config) {
-        config.consumer_entities = config.consumer_entities || [];
-        config.battery_entities = config.battery_entities || [];
-        const newConfig = verifyAndMigrateConfig(config);
+        const cfg = Object.assign(Object.assign({}, config), { consumer_entities: config.consumer_entities || [], battery_entities: config.battery_entities || [] });
+        const newConfig = verifyAndMigrateConfig(cfg);
         this._config = Object.assign({}, newConfig);
     }
     _getValues(config) {
