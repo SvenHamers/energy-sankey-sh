@@ -83,16 +83,24 @@ export class HuiEntitiesCardRowEditor extends LitElement {
                       </div>
                     `
             : html`
-                      <ha-entity-picker
-                        allow-custom-entity
-                        include-device-classes=${deviceClassesFilter}
-                        hideClearIcon
-                        label=${this.subLabel || nothing}
-                        .hass=${this.hass}
-                        .value=${(entityConf as EntityConfig).entity}
-                        .index=${index}
-                        @value-changed=${this._valueChanged}
-                      ></ha-entity-picker>
+                      <div class="entity-fields">
+                        <ha-entity-picker
+                          allow-custom-entity
+                          include-device-classes=${deviceClassesFilter}
+                          hideClearIcon
+                          label=${this.subLabel || nothing}
+                          .hass=${this.hass}
+                          .value=${(entityConf as EntityConfig).entity}
+                          .index=${index}
+                          @value-changed=${this._valueChanged}
+                        ></ha-entity-picker>
+                        <ha-textfield
+                          .label=${"Custom name"}
+                          .value=${(entityConf as any).name || ""}
+                          .index=${index}
+                          @change=${this._nameChanged}
+                        ></ha-textfield>
+                      </div>
                     `}
                 <ha-icon-button
                   .label=${this.hass!.localize(
@@ -167,6 +175,18 @@ export class HuiEntitiesCardRowEditor extends LitElement {
     fireEvent(this, "entities-changed", { entities: newConfigEntities });
   }
 
+  private _nameChanged(ev: Event): void {
+    const target = ev.target as any;
+    const index = target.index;
+    const name = target.value?.trim() || undefined;
+    const newConfigEntities = this.entities!.concat();
+    newConfigEntities[index] = {
+      ...newConfigEntities[index],
+      name,
+    } as any;
+    fireEvent(this, "entities-changed", { entities: newConfigEntities });
+  }
+
   private _editRow(ev: CustomEvent): void {
     const index = (ev.currentTarget as any).index;
     fireEvent(this, "edit-detail-element", {
@@ -206,6 +226,22 @@ export class HuiEntitiesCardRowEditor extends LitElement {
       }
       .entity .handle > * {
         pointer-events: none;
+      }
+
+      .entity-fields {
+        flex-grow: 1;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .entity-fields ha-entity-picker {
+        flex: 2;
+      }
+
+      .entity-fields ha-textfield {
+        flex: 1;
+        min-width: 100px;
       }
 
       .entity ha-entity-picker {

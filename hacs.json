@@ -1,5 +1,5 @@
 {
-    "name": "Energy Sankey Card",
+    "name": "Energy Radial Card",
     "render_readme": true,
     "filename": "energy-sankey.js",
     "content_in_root": false

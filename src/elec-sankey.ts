@@ -479,40 +479,40 @@ export class ElecSankey extends LitElement {
   @property({ attribute: false })
   public batteryChargeOnlyFromGeneration: boolean = false;
 
-  private _rateToWidthMultplier: number = 0.2;
+  protected _rateToWidthMultplier: number = 0.2;
 
-  private _phantomGridInRoute?: ElecRoute;
+  protected _phantomGridInRoute?: ElecRoute;
 
-  private _phantomGenerationInRoute?: ElecRoute;
+  protected _phantomGenerationInRoute?: ElecRoute;
 
-  private _untrackedConsumerRoute: ElecRoute = {
+  protected _untrackedConsumerRoute: ElecRoute = {
     id: undefined,
     text: "Untracked",
     rate: 0,
   };
 
-  private _gridExport: number = 0;
+  protected _gridExport: number = 0;
 
-  private _batteriesToGridRate: number = 0;
+  protected _batteriesToGridRate: number = 0;
 
-  private _batteriesToConsumersRate: number = 0;
+  protected _batteriesToConsumersRate: number = 0;
 
-  private _gridToBatteriesRate: number = 0;
+  protected _gridToBatteriesRate: number = 0;
 
-  private _gridToConsumersRate: number = 0;
+  protected _gridToConsumersRate: number = 0;
 
-  private _generationToBatteriesRate: number = 0;
+  protected _generationToBatteriesRate: number = 0;
 
-  private _generationToGridRate: number = 0;
+  protected _generationToGridRate: number = 0;
 
-  private _generationToConsumersRate: number = 0;
+  protected _generationToConsumersRate: number = 0;
 
   protected _localize = (key: string, fallBack?: string) => {
     // This is a simple localizer that can be overridden by the parent class.
     return fallBack || key;
   };
 
-  private _generationTrackedTotal(): number {
+  protected _generationTrackedTotal(): number {
     let totalGen = 0;
     for (const key in this.generationInRoutes) {
       if (Object.prototype.hasOwnProperty.call(this.generationInRoutes, key)) {
@@ -522,17 +522,17 @@ export class ElecSankey extends LitElement {
     return totalGen;
   }
 
-  private _generationPhantom(): number {
+  protected _generationPhantom(): number {
     return this._phantomGenerationInRoute
       ? this._phantomGenerationInRoute.rate
       : 0;
   }
 
-  private _generationTotal(): number {
+  protected _generationTotal(): number {
     return this._generationTrackedTotal() + this._generationPhantom();
   }
 
-  private _gridImport(excludePhantom: boolean = false): number {
+  protected _gridImport(excludePhantom: boolean = false): number {
     if (this.gridInRoute) {
       return this.gridInRoute.rate > 0 ? this.gridInRoute.rate : 0;
     } else if (this.gridOutRoute) {
@@ -543,7 +543,7 @@ export class ElecSankey extends LitElement {
     return 0;
   }
 
-  private _consumerTrackedTotal(): number {
+  protected _consumerTrackedTotal(): number {
     let total = 0;
     for (const id in this.consumerRoutes) {
       if (Object.prototype.hasOwnProperty.call(this.consumerRoutes, id)) {
@@ -553,7 +553,7 @@ export class ElecSankey extends LitElement {
     return total;
   }
 
-  private _batteryOutTotal(): number {
+  protected _batteryOutTotal(): number {
     /**
      * Battery rate out of the electrical system (i.e. charging).
      */
@@ -572,7 +572,7 @@ export class ElecSankey extends LitElement {
     return total;
   }
 
-  private _batteryInTotal(): number {
+  protected _batteryInTotal(): number {
     /**
      * Battery rate in to the electrical system (i.e. discharging)
      */
@@ -591,7 +591,7 @@ export class ElecSankey extends LitElement {
     return total;
   }
 
-  private _recalculate() {
+  protected _recalculate() {
     /**
      * Note that it is not 100% possible to fully determine the actual flow of
      * electrons in all secenarios.
@@ -1491,7 +1491,7 @@ export class ElecSankey extends LitElement {
     return [divRet, svgFlow, svgExtras, svgArrow, bottomLeftY, bottomRightY];
   }
 
-  private _getGroupedConsumerRoutes(): { [id: string]: ElecRoute } {
+  protected _getGroupedConsumerRoutes(): { [id: string]: ElecRoute } {
     let consumerRoutes: { [id: string]: ElecRoute } =
       sortRoutesByRateDescending(this.consumerRoutes);
 
