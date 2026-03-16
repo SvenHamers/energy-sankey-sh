@@ -1,4 +1,4 @@
-var version = "1.0.4*";
+var version = "1.0.4-2-g35362c4*";
 var repository = {
 	url: "https://github.com/davet2001/homeassistant-energy-sankey-card"
 };
@@ -6793,6 +6793,8 @@ let RadialPowerFlowCard = class RadialPowerFlowCard extends ElecFlowCardBase {
         return 3;
     }
     setConfig(config) {
+        config.consumer_entities = config.consumer_entities || [];
+        config.battery_entities = config.battery_entities || [];
         const newConfig = verifyAndMigrateConfig(config);
         this._config = Object.assign({}, newConfig);
     }
@@ -6892,6 +6894,14 @@ let RadialPowerFlowCard = class RadialPowerFlowCard extends ElecFlowCardBase {
             ? HIDE_CONSUMERS_BELOW_THRESHOLD_W
             : 0;
         const batteryChargeOnlyFromGeneration = this._config.battery_charge_only_from_generation || false;
+        // Get battery SoC from configured entity or auto-detect
+        let batterySoc;
+        if (this._config.battery_soc_entity) {
+            const socState = this.hass.states[this._config.battery_soc_entity];
+            if (socState) {
+                batterySoc = Number(socState.state);
+            }
+        }
         return x `
       <ha-card>
         ${config.title ? x `<h1 class="card-header">${config.title}</h1>` : ""}
@@ -6904,6 +6914,7 @@ let RadialPowerFlowCard = class RadialPowerFlowCard extends ElecFlowCardBase {
             .generationInRoutes=${generationInRoutes}
             .consumerRoutes=${consumerRoutes}
             .batteryRoutes=${batteryRoutes}
+            .batterySoc=${batterySoc}
             .maxConsumerBranches=${maxConsumerBranches}
             .hideConsumersBelow=${hideConsumersBelow}
             .batteryChargeOnlyFromGeneration=${batteryChargeOnlyFromGeneration}
@@ -6927,6 +6938,7 @@ let RadialPowerFlowCard = class RadialPowerFlowCard extends ElecFlowCardBase {
                 this._config.power_to_grid_entity,
                 ...(this._config.generation_entities || []),
                 ...(this._config.consumer_entities.map((a) => a.entity) || []),
+                this._config.battery_soc_entity,
                 ...(this._config.battery_entities.map((a) => a.entity) || []),
             ]) {
                 if (id) {
@@ -8662,13 +8674,18 @@ let ElecRadial = class ElecRadial extends ElecSankey {
         const battIn = this._batteryInTotal();
         const battOut = this._batteryOutTotal();
         if (Object.keys(this.batteryRoutes).length > 0) {
-            let sublabel = "idle";
+            let sublabel = "";
+            if (this.batterySoc !== undefined) {
+                sublabel = `${Math.round(this.batterySoc)}% \u00B7 `;
+            }
             if (battIn > 0 && battOut > 0)
-                sublabel = "active";
+                sublabel += "active";
             else if (battIn > 0)
-                sublabel = "\u2191 discharging";
+                sublabel += "\u2191 discharging";
             else if (battOut > 0)
-                sublabel = "\u2193 charging";
+                sublabel += "\u2193 charging";
+            else
+                sublabel += "idle";
             sources.push({
                 icon: battOut > 0 ? mdiBatteryCharging : mdiBattery,
                 label: this._localize("battery", "Battery"),
@@ -9179,6 +9196,9 @@ let ElecRadial = class ElecRadial extends ElecSankey {
     `;
     }
 };
+__decorate([
+    n$5({ attribute: false })
+], ElecRadial.prototype, "batterySoc", void 0);
 __decorate([
     t$3()
 ], ElecRadial.prototype, "_lines", void 0);

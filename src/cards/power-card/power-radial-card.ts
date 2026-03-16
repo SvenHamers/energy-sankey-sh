@@ -76,6 +76,8 @@ export class RadialPowerFlowCard extends ElecFlowCardBase implements LovelaceCar
   }
 
   public setConfig(config: PowerFlowCardConfig): void {
+    config.consumer_entities = config.consumer_entities || [];
+    config.battery_entities = config.battery_entities || [];
     const newConfig = verifyAndMigrateConfig(config);
     this._config = { ...newConfig };
   }
@@ -193,6 +195,15 @@ export class RadialPowerFlowCard extends ElecFlowCardBase implements LovelaceCar
     const batteryChargeOnlyFromGeneration =
       this._config.battery_charge_only_from_generation || false;
 
+    // Get battery SoC from configured entity or auto-detect
+    let batterySoc: number | undefined;
+    if (this._config.battery_soc_entity) {
+      const socState = this.hass.states[this._config.battery_soc_entity];
+      if (socState) {
+        batterySoc = Number(socState.state);
+      }
+    }
+
     return html`
       <ha-card>
         ${config.title ? html`<h1 class="card-header">${config.title}</h1>` : ""}
@@ -205,6 +216,7 @@ export class RadialPowerFlowCard extends ElecFlowCardBase implements LovelaceCar
             .generationInRoutes=${generationInRoutes}
             .consumerRoutes=${consumerRoutes}
             .batteryRoutes=${batteryRoutes}
+            .batterySoc=${batterySoc}
             .maxConsumerBranches=${maxConsumerBranches}
             .hideConsumersBelow=${hideConsumersBelow}
             .batteryChargeOnlyFromGeneration=${batteryChargeOnlyFromGeneration}
@@ -229,6 +241,7 @@ export class RadialPowerFlowCard extends ElecFlowCardBase implements LovelaceCar
         this._config.power_to_grid_entity,
         ...(this._config.generation_entities || []),
         ...(this._config.consumer_entities.map((a) => a.entity) || []),
+        this._config.battery_soc_entity,
         ...(this._config.battery_entities.map((a) => a.entity) || []),
       ]) {
         if (id) {

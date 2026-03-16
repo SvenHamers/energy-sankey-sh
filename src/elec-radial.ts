@@ -15,7 +15,7 @@ import {
   mdiHome,
   mdiFlash,
 } from "@mdi/js";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { ElecSankey, ElecRoute } from "./elec-sankey";
 
 const UNTRACKED_ID = "untracked";
@@ -44,6 +44,9 @@ interface LineData {
 
 @customElement("elec-radial")
 export class ElecRadial extends ElecSankey {
+  @property({ attribute: false })
+  public batterySoc?: number; // Battery state of charge 0-100
+
   @state() private _lines: LineData[] = [];
 
   private _resizeObserver?: ResizeObserver;
@@ -235,10 +238,14 @@ export class ElecRadial extends ElecSankey {
     const battIn = this._batteryInTotal();
     const battOut = this._batteryOutTotal();
     if (Object.keys(this.batteryRoutes).length > 0) {
-      let sublabel = "idle";
-      if (battIn > 0 && battOut > 0) sublabel = "active";
-      else if (battIn > 0) sublabel = "\u2191 discharging";
-      else if (battOut > 0) sublabel = "\u2193 charging";
+      let sublabel = "";
+      if (this.batterySoc !== undefined) {
+        sublabel = `${Math.round(this.batterySoc)}% \u00B7 `;
+      }
+      if (battIn > 0 && battOut > 0) sublabel += "active";
+      else if (battIn > 0) sublabel += "\u2191 discharging";
+      else if (battOut > 0) sublabel += "\u2193 charging";
+      else sublabel += "idle";
       sources.push({
         icon: battOut > 0 ? mdiBatteryCharging : mdiBattery,
         label: this._localize("battery", "Battery"),

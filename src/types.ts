@@ -14,6 +14,7 @@ export interface PowerFlowCardConfig extends ElecFlowCardConfig {
   power_from_grid_entity?: string;
   power_to_grid_entity?: string;
   generation_entity?: string;
+  battery_soc_entity?: string;
   independent_grid_in_out?: boolean;
   consumer_entities: {
     entity: string;
