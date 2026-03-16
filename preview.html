@@ -25,95 +25,66 @@
       padding: 16px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
-    h1 {
-      font-size: 16px;
-      font-weight: 400;
-      padding: 8px 16px 0;
-      color: #cfd8dc;
-    }
-    h2 {
-      font-size: 13px;
-      font-weight: 300;
-      color: #78909c;
-      text-align: center;
-      margin-top: 8px;
-    }
+    h1 { font-size: 16px; font-weight: 400; padding: 8px 16px 0; color: #cfd8dc; }
+    h2 { font-size: 13px; font-weight: 300; color: #78909c; text-align: center; }
   </style>
 </head>
 <body>
-  <h2>Preview with your actual data (5 consumers + untracked)</h2>
+  <h2>90% Solar — lines should look AMBER/YELLOW</h2>
   <div class="card-wrapper">
-    <h1>Live power flow</h1>
-    <elec-radial id="radial1"></elec-radial>
+    <h1>Sunny day</h1>
+    <elec-radial id="r1"></elec-radial>
   </div>
 
-  <h2>Preview with many consumers (like your HA setup)</h2>
+  <h2>90% Grid — lines should look BLUE</h2>
   <div class="card-wrapper">
-    <h1>Live power flow</h1>
-    <elec-radial id="radial2"></elec-radial>
+    <h1>Night time grid</h1>
+    <elec-radial id="r2"></elec-radial>
+  </div>
+
+  <h2>60% Battery + 20% Grid + 20% Solar — blended</h2>
+  <div class="card-wrapper">
+    <h1>Mixed sources</h1>
+    <elec-radial id="r3"></elec-radial>
   </div>
 
   <script type="module">
     import './dist/energy-sankey.js';
 
-    // === Card 1: matching the screenshot values ===
-    const el1 = document.getElementById('radial1');
-    el1.unit = 'W';
-    el1.generationInRoutes = {
-      'sensor.solar_power': {
-        id: 'sensor.solar_power', text: 'Solar', rate: 0,
+    function setup(id, solar, grid, battIn, soc, consumers) {
+      const el = document.getElementById(id);
+      el.unit = 'W';
+      if (solar > 0) {
+        el.generationInRoutes = { 's': { id: 's', text: 'Solar', rate: solar } };
+      } else {
+        el.generationInRoutes = { 's': { id: 's', text: 'Solar', rate: 0 } };
       }
-    };
-    el1.gridInRoute = { id: 'sensor.grid_power', text: 'Grid', rate: 10 };
-    el1.batteryRoutes = {
-      'sensor.battery_power': {
-        in: { id: 'sensor.battery_power', text: 'Battery', rate: 705 },
-        out: { id: 'sensor.battery_charge', text: 'Battery', rate: 0 }
+      el.gridInRoute = { id: 'g', text: 'Grid', rate: grid };
+      if (battIn > 0) {
+        el.batteryRoutes = { 'b': { in: { id: 'b', text: 'Battery', rate: battIn }, out: { id: 'bo', text: 'Battery', rate: 0 } } };
+      } else {
+        el.batteryRoutes = {};
       }
-    };
-    el1.consumerRoutes = {
-      'sensor.tv_power': { id: 'sensor.tv_power', text: 'TV / Switch', rate: 146 },
-      'sensor.floor_heating': { id: 'sensor.floor_heating', text: 'Vloerverwarming', rate: 32 },
-      'sensor.home_automation': { id: 'sensor.home_automation', text: 'Home automation', rate: 45 },
-      'sensor.airco': { id: 'sensor.airco', text: 'Airco', rate: 6 },
-      'sensor.garden_lights': { id: 'sensor.garden_lights', text: 'Tuinverlichting', rate: 6 },
-    };
-    el1.maxConsumerBranches = 0;
-    el1.hideConsumersBelow = 0;
-    el1.batteryChargeOnlyFromGeneration = false;
+      el.batterySoc = soc;
+      el.consumerRoutes = consumers;
+      el.maxConsumerBranches = 0;
+      el.hideConsumersBelow = 0;
+    }
 
-    // === Card 2: many consumers (from the second screenshot) ===
-    const el2 = document.getElementById('radial2');
-    el2.unit = 'W';
-    el2.generationInRoutes = {};
-    el2.gridInRoute = { id: 'sensor.grid_power', text: 'Grid', rate: 2 };
-    el2.batteryRoutes = {
-      'sensor.battery_power': {
-        in: { id: 'sensor.battery_power', text: 'Battery', rate: 589 },
-        out: { id: 'sensor.battery_charge', text: 'Battery', rate: 0 }
-      }
+    const cons = {
+      'c1': { id: 'c1', text: 'TV', rate: 200 },
+      'c2': { id: 'c2', text: 'Airco', rate: 80 },
+      'c3': { id: 'c3', text: 'Verlichting', rate: 40 },
     };
-    el2.consumerRoutes = {
-      'sensor.tv': { id: 'sensor.tv', text: 'TV / Switch', rate: 143 },
-      'sensor.ha': { id: 'sensor.ha', text: 'homeautomation Switch', rate: 43 },
-      'sensor.floor': { id: 'sensor.floor', text: 'Vloerverwarming Huidig', rate: 32 },
-      'sensor.airco': { id: 'sensor.airco', text: 'Airco power', rate: 6 },
-      'sensor.tuin': { id: 'sensor.tuin', text: 'tuinverlichting zwembad', rate: 6 },
-      'sensor.wijn': { id: 'sensor.wijn', text: 'wijnkoelkast Switch 0', rate: 6 },
-      'sensor.eetafel': { id: 'sensor.eetafel', text: 'Eetafel Power', rate: 2 },
-      'sensor.wasmachine': { id: 'sensor.wasmachine', text: 'Wasmachine Huidig V.', rate: 2 },
-      'sensor.muur': { id: 'sensor.muur', text: 'Muur Power', rate: 1 },
-      'sensor.boiler': { id: 'sensor.boiler', text: 'Boiler Huidig Verbruik', rate: 1 },
-      'sensor.eh8': { id: 'sensor.eh8', text: 'EH8JTBJQ Power', rate: 0 },
-      'sensor.droger': { id: 'sensor.droger', text: 'Droger Huidig Verbruik', rate: 0 },
-      'sensor.vaatwasser': { id: 'sensor.vaatwasser', text: 'vaatwasser Switch 0', rate: 0 },
-      'sensor.keuken': { id: 'sensor.keuken', text: 'Keuken Power', rate: 0 },
-      'sensor.tvpower': { id: 'sensor.tvpower', text: 'Tv Power', rate: 0 },
-      'sensor.gang': { id: 'sensor.gang', text: 'Gang Power', rate: 0 },
-    };
-    el2.maxConsumerBranches = 0;
-    el2.hideConsumersBelow = 0;
-    el2.batteryChargeOnlyFromGeneration = false;
+
+    // 90% solar, 10% grid
+    setup('r1', 900, 100, 0, undefined, cons);
+
+    // 90% grid, 10% solar
+    setup('r2', 50, 950, 0, undefined, cons);
+
+    // Mixed: 60% battery, 20% grid, 20% solar
+    setup('r3', 200, 200, 600, 72, cons);
   </script>
 </body>
 </html>

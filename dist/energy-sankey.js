@@ -1,4 +1,4 @@
-var version = "1.0.4-4-g2de5d3c*";
+var version = "1.0.4-5-g50e9709*";
 var repository = {
 	url: "https://github.com/davet2001/homeassistant-energy-sankey-card"
 };
@@ -8558,6 +8558,7 @@ let ElecRadial = class ElecRadial extends ElecSankey {
             this._gridToConsumersRate +
             this._batteriesToConsumersRate;
         // Source -> Home lines
+        let srcIdx = 0;
         (_c = this.renderRoot) === null || _c === void 0 ? void 0 : _c.querySelectorAll(".source-node").forEach((el) => {
             const circle = el.querySelector(".node-circle");
             if (!circle)
@@ -8570,6 +8571,7 @@ let ElecRadial = class ElecRadial extends ElecSankey {
             const duration = this._rateToDuration(rate, maxSourceRate);
             if (rate > 0) {
                 lines.push({
+                    id: `src-${srcIdx++}`,
                     x1: cx,
                     y1: cy,
                     x2: homeCx,
@@ -8580,7 +8582,22 @@ let ElecRadial = class ElecRadial extends ElecSankey {
                 });
             }
         });
-        // Home -> Consumer lines
+        // Home -> Consumer lines: gradient colored by source contribution
+        // Build gradient stops: smallest source first, largest last
+        const sourceParts = [
+            { color: this._colors.solar, ratio: homeTotal > 0 ? this._generationToConsumersRate / homeTotal : 0 },
+            { color: this._colors.grid, ratio: homeTotal > 0 ? this._gridToConsumersRate / homeTotal : 0 },
+            { color: this._colors.battery, ratio: homeTotal > 0 ? this._batteriesToConsumersRate / homeTotal : 0 },
+        ].filter(s => s.ratio > 0).sort((a, b) => a.ratio - b.ratio); // smallest first, biggest last
+        const gradientStops = [];
+        let offset = 0;
+        for (const part of sourceParts) {
+            const pct = part.ratio * 100;
+            gradientStops.push({ offset, color: part.color });
+            gradientStops.push({ offset: offset + pct, color: part.color });
+            offset += pct;
+        }
+        let consIdx = 0;
         (_d = this.renderRoot) === null || _d === void 0 ? void 0 : _d.querySelectorAll(".consumer-node").forEach((el) => {
             const circle = el.querySelector(".node-circle");
             if (!circle)
@@ -8589,17 +8606,19 @@ let ElecRadial = class ElecRadial extends ElecSankey {
             const cx = r.left + r.width / 2 - containerRect.left;
             const cy = r.top + r.height / 2 - containerRect.top;
             const rate = parseFloat(el.dataset.rate || "0");
-            const color = el.dataset.color || "#4ecdc4";
             const duration = this._rateToDuration(rate, homeTotal || 1);
             if (rate > 0) {
                 lines.push({
+                    id: `cons-${consIdx++}`,
                     x1: homeCx,
                     y1: homeCy,
                     x2: cx,
                     y2: cy,
                     duration,
-                    color,
+                    color: this._colors.consumer,
                     animated: true,
+                    opacity: 0.75,
+                    gradient: gradientStops.length > 0 ? gradientStops : undefined,
                 });
             }
         });
@@ -8784,17 +8803,31 @@ let ElecRadial = class ElecRadial extends ElecSankey {
 
         <div class="flow-area">
           <svg class="connections" width="100%" height="100%">
-            ${this._lines.map((line) => b `
+            <defs>
+              ${this._lines.filter(l => l.gradient).map((line) => b `
+                <linearGradient
+                  id="grad-${line.id}"
+                  gradientUnits="userSpaceOnUse"
+                  x1="${line.x1}" y1="${line.y1}"
+                  x2="${line.x2}" y2="${line.y2}"
+                >
+                  ${line.gradient.map((stop) => b `<stop offset="${stop.offset}%" stop-color="${stop.color}" />`)}
+                </linearGradient>`)}
+            </defs>
+            ${this._lines.map((line) => {
+            var _a;
+            return b `
               <line
                 x1="${line.x1}" y1="${line.y1}"
                 x2="${line.x2}" y2="${line.y2}"
-                stroke="${line.color}"
+                stroke="${line.gradient ? `url(#grad-${line.id})` : line.color}"
                 stroke-width="2"
                 stroke-dasharray="8 5"
                 stroke-linecap="round"
-                opacity="${line.animated ? 0.6 : 0.2}"
+                opacity="${(_a = line.opacity) !== null && _a !== void 0 ? _a : (line.animated ? 0.6 : 0.2)}"
                 style="animation: dash-flow ${line.duration}s linear infinite"
-              />`)}
+              />`;
+        })}
           </svg>
 
           <div class="sources-column">
