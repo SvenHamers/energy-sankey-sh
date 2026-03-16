@@ -76,13 +76,12 @@ export class RadialPowerFlowCard extends ElecFlowCardBase implements LovelaceCar
   }
 
   public setConfig(config: PowerFlowCardConfig): void {
-    const cfg = {
+    this._config = {
       ...config,
       consumer_entities: config.consumer_entities || [],
       battery_entities: config.battery_entities || [],
+      config_version: 3,
     };
-    const newConfig = verifyAndMigrateConfig(cfg);
-    this._config = { ...newConfig };
   }
 
   protected _getValues(
