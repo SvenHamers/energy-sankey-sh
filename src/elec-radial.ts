@@ -58,6 +58,8 @@ export class ElecRadial extends ElecSankey {
   @state() private _lines: LineData[] = [];
 
   private _resizeObserver?: ResizeObserver;
+  private _updateLinesRAF: number | null = null;
+  private _colorsResolved = false;
 
   private _colors = {
     solar: "#f5a623",
@@ -68,14 +70,19 @@ export class ElecRadial extends ElecSankey {
 
   connectedCallback() {
     super.connectedCallback();
+    this._colorsResolved = false;
     this._resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(() => this._updateLines());
+      this._scheduleUpdateLines();
     });
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._resizeObserver?.disconnect();
+    if (this._updateLinesRAF !== null) {
+      cancelAnimationFrame(this._updateLinesRAF);
+      this._updateLinesRAF = null;
+    }
   }
 
   protected firstUpdated(_changedProps: PropertyValues) {
@@ -87,12 +94,21 @@ export class ElecRadial extends ElecSankey {
 
   protected updated(changedProps: PropertyValues) {
     if (!changedProps.has("_lines")) {
-      requestAnimationFrame(() => this._updateLines());
+      this._scheduleUpdateLines();
     }
   }
 
+  /** Coalesce multiple update requests into a single RAF */
+  private _scheduleUpdateLines() {
+    if (this._updateLinesRAF !== null) return;
+    this._updateLinesRAF = requestAnimationFrame(() => {
+      this._updateLinesRAF = null;
+      this._updateLines();
+    });
+  }
+
   private _resolveColors() {
-    if (!this.isConnected) return;
+    if (!this.isConnected || this._colorsResolved) return;
     const style = getComputedStyle(this);
     const gen = style.getPropertyValue("--generation-color").trim();
     const grid = style.getPropertyValue("--grid-in-color").trim();
@@ -101,6 +117,7 @@ export class ElecRadial extends ElecSankey {
     if (grid) this._colors.grid = grid;
     if (batt) this._colors.battery = batt;
     this._colors.consumer = this._colors.battery;
+    this._colorsResolved = true;
   }
 
   private _updateLines() {
@@ -110,8 +127,41 @@ export class ElecRadial extends ElecSankey {
     );
     if (!flowArea || !homeCircle) return;
 
+    // --- BATCH ALL DOM READS first to avoid layout thrashing ---
     const containerRect = flowArea.getBoundingClientRect();
     const homeRect = homeCircle.getBoundingClientRect();
+
+    const sourceEls = this.renderRoot?.querySelectorAll(".source-node") || [];
+    const consumerEls = this.renderRoot?.querySelectorAll(".consumer-node") || [];
+
+    // Read all source rects in one batch
+    const sourceData: { cx: number; cy: number; rate: number; color: string }[] = [];
+    sourceEls.forEach((el) => {
+      const circle = el.querySelector(".node-circle");
+      if (!circle) return;
+      const r = circle.getBoundingClientRect();
+      sourceData.push({
+        cx: r.left + r.width / 2 - containerRect.left,
+        cy: r.top + r.height / 2 - containerRect.top,
+        rate: parseFloat((el as HTMLElement).dataset.rate || "0"),
+        color: (el as HTMLElement).dataset.color || "#4ecdc4",
+      });
+    });
+
+    // Read all consumer rects in one batch
+    const consumerData: { cx: number; cy: number; rate: number }[] = [];
+    consumerEls.forEach((el) => {
+      const circle = el.querySelector(".node-circle");
+      if (!circle) return;
+      const r = circle.getBoundingClientRect();
+      consumerData.push({
+        cx: r.left + r.width / 2 - containerRect.left,
+        cy: r.top + r.height / 2 - containerRect.top,
+        rate: parseFloat((el as HTMLElement).dataset.rate || "0"),
+      });
+    });
+
+    // --- Now compute (no more DOM reads) ---
     const homeCx = homeRect.left + homeRect.width / 2 - containerRect.left;
     const homeCy = homeRect.top + homeRect.height / 2 - containerRect.top;
 
@@ -129,37 +179,28 @@ export class ElecRadial extends ElecSankey {
       this._batteriesToConsumersRate;
 
     // Source -> Home lines
-    let srcIdx = 0;
-    this.renderRoot?.querySelectorAll(".source-node").forEach((el) => {
-      const circle = el.querySelector(".node-circle");
-      if (!circle) return;
-      const r = circle.getBoundingClientRect();
-      const cx = r.left + r.width / 2 - containerRect.left;
-      const cy = r.top + r.height / 2 - containerRect.top;
-      const rate = parseFloat((el as HTMLElement).dataset.rate || "0");
-      const color = (el as HTMLElement).dataset.color || "#4ecdc4";
-      const duration = this._rateToDuration(rate, maxSourceRate);
-      if (rate > 0) {
+    for (let i = 0; i < sourceData.length; i++) {
+      const s = sourceData[i];
+      if (s.rate > 0) {
         lines.push({
-          id: `src-${srcIdx++}`,
-          x1: cx,
-          y1: cy,
+          id: `src-${i}`,
+          x1: s.cx,
+          y1: s.cy,
           x2: homeCx,
           y2: homeCy,
-          duration,
-          color,
+          duration: this._rateToDuration(s.rate, maxSourceRate),
+          color: s.color,
           animated: true,
         });
       }
-    });
+    }
 
     // Home -> Consumer lines: gradient colored by source contribution
-    // Build gradient stops: smallest source first, largest last
     const sourceParts = [
       { color: this._colors.solar, ratio: homeTotal > 0 ? this._generationToConsumersRate / homeTotal : 0 },
       { color: this._colors.grid, ratio: homeTotal > 0 ? this._gridToConsumersRate / homeTotal : 0 },
       { color: this._colors.battery, ratio: homeTotal > 0 ? this._batteriesToConsumersRate / homeTotal : 0 },
-    ].filter(s => s.ratio > 0).sort((a, b) => a.ratio - b.ratio); // smallest first, biggest last
+    ].filter(s => s.ratio > 0).sort((a, b) => a.ratio - b.ratio);
 
     const gradientStops: GradientStop[] = [];
     let offset = 0;
@@ -170,30 +211,23 @@ export class ElecRadial extends ElecSankey {
       offset += pct;
     }
 
-    let consIdx = 0;
-    this.renderRoot?.querySelectorAll(".consumer-node").forEach((el) => {
-      const circle = el.querySelector(".node-circle");
-      if (!circle) return;
-      const r = circle.getBoundingClientRect();
-      const cx = r.left + r.width / 2 - containerRect.left;
-      const cy = r.top + r.height / 2 - containerRect.top;
-      const rate = parseFloat((el as HTMLElement).dataset.rate || "0");
-      const duration = this._rateToDuration(rate, homeTotal || 1);
-      if (rate > 0) {
+    for (let i = 0; i < consumerData.length; i++) {
+      const c = consumerData[i];
+      if (c.rate > 0) {
         lines.push({
-          id: `cons-${consIdx++}`,
+          id: `cons-${i}`,
           x1: homeCx,
           y1: homeCy,
-          x2: cx,
-          y2: cy,
-          duration,
+          x2: c.cx,
+          y2: c.cy,
+          duration: this._rateToDuration(c.rate, homeTotal || 1),
           color: this._colors.consumer,
           animated: true,
           opacity: 0.75,
           gradient: gradientStops.length > 0 ? gradientStops : undefined,
         });
       }
-    });
+    }
 
     this._lines = lines;
   }
@@ -616,6 +650,8 @@ export class ElecRadial extends ElecSankey {
         pointer-events: none;
         z-index: 0;
         overflow: visible;
+        will-change: contents;
+        contain: layout style;
       }
 
       @keyframes dash-flow {
@@ -680,7 +716,7 @@ export class ElecRadial extends ElecSankey {
         align-items: center;
         justify-content: center;
         gap: 2px;
-        transition: all 0.4s ease;
+        transition: opacity 0.4s ease, box-shadow 0.4s ease;
         background: rgba(0, 0, 0, 0.15);
         position: relative;
       }
@@ -691,10 +727,7 @@ export class ElecRadial extends ElecSankey {
         color: var(--generation-color, #f5a623);
       }
       .node-circle.solar.active {
-        box-shadow:
-          0 0 25px rgba(245, 166, 35, 0.25),
-          0 0 50px rgba(245, 166, 35, 0.1),
-          inset 0 0 15px rgba(245, 166, 35, 0.08);
+        box-shadow: 0 0 20px rgba(245, 166, 35, 0.2);
       }
       .node-circle.solar.inactive {
         background: rgba(245, 166, 35, 0.05);
@@ -705,10 +738,7 @@ export class ElecRadial extends ElecSankey {
         color: var(--grid-in-color, #4a90d9);
       }
       .node-circle.grid.active {
-        box-shadow:
-          0 0 25px rgba(74, 144, 217, 0.25),
-          0 0 50px rgba(74, 144, 217, 0.1),
-          inset 0 0 15px rgba(74, 144, 217, 0.08);
+        box-shadow: 0 0 20px rgba(74, 144, 217, 0.2);
       }
 
       .node-circle.battery {
@@ -716,10 +746,7 @@ export class ElecRadial extends ElecSankey {
         color: var(--batt-in-color, #4ecdc4);
       }
       .node-circle.battery.active {
-        box-shadow:
-          0 0 25px rgba(78, 205, 196, 0.25),
-          0 0 50px rgba(78, 205, 196, 0.1),
-          inset 0 0 15px rgba(78, 205, 196, 0.08);
+        box-shadow: 0 0 20px rgba(78, 205, 196, 0.2);
       }
 
       .node-circle.consumer {
@@ -727,10 +754,7 @@ export class ElecRadial extends ElecSankey {
         color: var(--batt-in-color, #4ecdc4);
       }
       .node-circle.consumer.active {
-        box-shadow:
-          0 0 20px rgba(78, 205, 196, 0.2),
-          0 0 40px rgba(78, 205, 196, 0.08),
-          inset 0 0 12px rgba(78, 205, 196, 0.06);
+        box-shadow: 0 0 16px rgba(78, 205, 196, 0.18);
       }
 
       .node-circle.home {
@@ -738,10 +762,7 @@ export class ElecRadial extends ElecSankey {
         border-color: rgba(150, 170, 200, 0.35);
         color: rgba(200, 215, 235, 0.85);
         background: rgba(30, 40, 60, 0.4);
-        box-shadow:
-          0 0 40px rgba(150, 170, 200, 0.1),
-          0 0 80px rgba(150, 170, 200, 0.05),
-          inset 0 0 25px rgba(150, 170, 200, 0.04);
+        box-shadow: 0 0 30px rgba(150, 170, 200, 0.08);
       }
 
       .node-circle.inactive {

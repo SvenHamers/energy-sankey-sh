@@ -512,6 +512,9 @@ export class ElecSankey extends LitElement {
     return fallBack || key;
   };
 
+  // Memoization key for _recalculate
+  private _lastRecalcInputKey = "";
+
   protected _generationTrackedTotal(): number {
     let totalGen = 0;
     for (const key in this.generationInRoutes) {
@@ -604,6 +607,21 @@ export class ElecSankey extends LitElement {
      * each flow only possible to be in or out (not both), but they are both
      * calculated using the same algorithm, documented inline below.
      */
+
+    // Build a cache key from all input values to skip recalculation when nothing changed
+    const inputKey = [
+      this.gridInRoute?.rate,
+      this.gridOutRoute?.rate,
+      this._generationTrackedTotal(),
+      this._consumerTrackedTotal(),
+      this._batteryInTotal(),
+      this._batteryOutTotal(),
+      this.batteryChargeOnlyFromGeneration ? 1 : 0,
+      Object.keys(this.consumerRoutes).length,
+    ].join(",");
+    if (inputKey === this._lastRecalcInputKey) return;
+    this._lastRecalcInputKey = inputKey;
+
     const gridImport = this._gridImport(true);
 
     // Determine the grid import and export
@@ -905,22 +923,34 @@ export class ElecSankey extends LitElement {
     return rate ? this._rateToWidth(rate) : 0;
   }
 
-  private _genColor(): string {
+  // Cached computed colors - resolved once per render cycle
+  private _cachedGenColor = "";
+  private _cachedGridColor = "";
+  private _cachedBattColor = "";
+  private _colorsResolvedForRender = false;
+
+  private _resolveThemeColors() {
+    if (this._colorsResolvedForRender) return;
+    this._colorsResolvedForRender = true;
     const computedStyles = getComputedStyle(this);
-    const ret = computedStyles.getPropertyValue("--generation-color").trim();
-    return ret || GEN_COLOR;
+    this._cachedGenColor = computedStyles.getPropertyValue("--generation-color").trim() || GEN_COLOR;
+    this._cachedGridColor = computedStyles.getPropertyValue("--grid-in-color").trim() || GRID_IN_COLOR;
+    this._cachedBattColor = computedStyles.getPropertyValue("--batt-in-color").trim() || BATT_IN_COLOR;
+  }
+
+  private _genColor(): string {
+    this._resolveThemeColors();
+    return this._cachedGenColor;
   }
 
   private _gridColor(): string {
-    const computedStyles = getComputedStyle(this);
-    const ret = computedStyles.getPropertyValue("--grid-in-color").trim();
-    return ret || GRID_IN_COLOR;
+    this._resolveThemeColors();
+    return this._cachedGridColor;
   }
 
   private _battColor(): string {
-    const computedStyles = getComputedStyle(this);
-    const ret = computedStyles.getPropertyValue("--batt-in-color").trim();
-    return ret || BATT_IN_COLOR;
+    this._resolveThemeColors();
+    return this._cachedBattColor;
   }
 
   protected _generateLabelDiv(
@@ -1949,6 +1979,7 @@ export class ElecSankey extends LitElement {
   }
 
   protected render(): TemplateResult {
+    this._colorsResolvedForRender = false; // reset color cache per render
     this._recalculate();
     const [
       x0,
