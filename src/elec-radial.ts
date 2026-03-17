@@ -30,6 +30,7 @@ interface NodeData {
   cssClass: string;
   active: boolean;
   diameter: number;
+  direction?: "in" | "out"; // in = flowing to home, out = flowing from home
 }
 
 interface GradientStop {
@@ -46,6 +47,7 @@ interface LineData {
   duration: number;
   color: string;
   animated: boolean;
+  reverse?: boolean; // reverse dash animation direction (for export/charging flows)
   opacity?: number;
   gradient?: GradientStop[]; // if set, use gradient stroke instead of solid color
 }
@@ -64,7 +66,9 @@ export class ElecRadial extends ElecSankey {
   private _colors = {
     solar: "#f5a623",
     grid: "#4a90d9",
+    gridExport: "#8b5cf6",   // purple for exporting to grid
     battery: "#4ecdc4",
+    batteryCharge: "#22c55e", // green for charging
     consumer: "#4ecdc4",
   };
 
@@ -113,9 +117,13 @@ export class ElecRadial extends ElecSankey {
     const gen = style.getPropertyValue("--generation-color").trim();
     const grid = style.getPropertyValue("--grid-in-color").trim();
     const batt = style.getPropertyValue("--batt-in-color").trim();
+    const gridOut = style.getPropertyValue("--grid-out-color").trim();
+    const battCharge = style.getPropertyValue("--batt-charge-color").trim();
     if (gen) this._colors.solar = gen;
     if (grid) this._colors.grid = grid;
     if (batt) this._colors.battery = batt;
+    if (gridOut) this._colors.gridExport = gridOut;
+    if (battCharge) this._colors.batteryCharge = battCharge;
     this._colors.consumer = this._colors.battery;
     this._colorsResolved = true;
   }
@@ -135,7 +143,7 @@ export class ElecRadial extends ElecSankey {
     const consumerEls = this.renderRoot?.querySelectorAll(".consumer-node") || [];
 
     // Read all source rects in one batch
-    const sourceData: { cx: number; cy: number; rate: number; color: string }[] = [];
+    const sourceData: { cx: number; cy: number; rate: number; color: string; direction: string }[] = [];
     sourceEls.forEach((el) => {
       const circle = el.querySelector(".node-circle");
       if (!circle) return;
@@ -145,6 +153,7 @@ export class ElecRadial extends ElecSankey {
         cy: r.top + r.height / 2 - containerRect.top,
         rate: parseFloat((el as HTMLElement).dataset.rate || "0"),
         color: (el as HTMLElement).dataset.color || "#4ecdc4",
+        direction: (el as HTMLElement).dataset.direction || "in",
       });
     });
 
@@ -178,19 +187,22 @@ export class ElecRadial extends ElecSankey {
       this._gridToConsumersRate +
       this._batteriesToConsumersRate;
 
-    // Source -> Home lines
+    // Source <-> Home lines (direction depends on import/export)
     for (let i = 0; i < sourceData.length; i++) {
       const s = sourceData[i];
       if (s.rate > 0) {
+        const isOutFlow = s.direction === "out";
         lines.push({
           id: `src-${i}`,
-          x1: s.cx,
-          y1: s.cy,
-          x2: homeCx,
-          y2: homeCy,
+          // For "out" (export/charging): line goes from home -> source
+          x1: isOutFlow ? homeCx : s.cx,
+          y1: isOutFlow ? homeCy : s.cy,
+          x2: isOutFlow ? s.cx : homeCx,
+          y2: isOutFlow ? s.cy : homeCy,
           duration: this._rateToDuration(s.rate, maxSourceRate),
           color: s.color,
           animated: true,
+          reverse: isOutFlow,
         });
       }
     }
@@ -284,16 +296,18 @@ export class ElecRadial extends ElecSankey {
       if (gridIn > 0 && gridOut > 0) sublabel = "importing & exporting";
       else if (gridIn > 0) sublabel = "\u2193 importing";
       else if (gridOut > 0) sublabel = "\u2191 exporting";
+      const isExporting = gridOut > 0 && gridIn === 0;
       sources.push({
         id: this.gridInRoute?.id || this.gridOutRoute?.id,
         icon: mdiTransmissionTower,
         label: this._localize("grid", "Grid"),
         sublabel,
         value: gridIn > 0 ? gridIn : gridOut,
-        color: this._colors.grid,
-        cssClass: "grid",
+        color: isExporting ? this._colors.gridExport : this._colors.grid,
+        cssClass: isExporting ? "grid-export" : "grid",
         active: gridIn > 0 || gridOut > 0,
         diameter: 75,
+        direction: isExporting ? "out" : "in",
       });
     }
 
@@ -309,15 +323,17 @@ export class ElecRadial extends ElecSankey {
       else if (battIn > 0) sublabel += "\u2191 discharging";
       else if (battOut > 0) sublabel += "\u2193 charging";
       else sublabel += "idle";
+      const isCharging = battOut > 0 && battIn === 0;
       sources.push({
         icon: battOut > 0 ? mdiBatteryCharging : mdiBattery,
         label: this._localize("battery", "Battery"),
         sublabel,
         value: Math.max(battIn, battOut),
-        color: this._colors.battery,
-        cssClass: "battery",
+        color: isCharging ? this._colors.batteryCharge : this._colors.battery,
+        cssClass: isCharging ? "battery-charge" : "battery",
         active: battIn > 0 || battOut > 0,
         diameter: 75,
+        direction: isCharging ? "out" : "in",
       });
     }
 
@@ -456,7 +472,7 @@ export class ElecRadial extends ElecSankey {
                 stroke-dasharray="8 5"
                 stroke-linecap="round"
                 opacity="${line.opacity ?? (line.animated ? 0.6 : 0.2)}"
-                style="animation: dash-flow ${line.duration}s linear infinite"
+                style="animation: ${line.reverse ? "dash-flow-reverse" : "dash-flow"} ${line.duration}s linear infinite"
               />`
             )}
           </svg>
@@ -468,6 +484,7 @@ export class ElecRadial extends ElecSankey {
                   class="node source-node"
                   data-rate="${s.value}"
                   data-color="${s.color}"
+                  data-direction="${s.direction || "in"}"
                   @click=${() => this._onNodeClick(s.id)}
                 >
                   <div
@@ -663,6 +680,15 @@ export class ElecRadial extends ElecSankey {
         }
       }
 
+      @keyframes dash-flow-reverse {
+        from {
+          stroke-dashoffset: 0;
+        }
+        to {
+          stroke-dashoffset: 13;
+        }
+      }
+
       /* Columns */
       .sources-column {
         flex: 0 0 20%;
@@ -741,12 +767,28 @@ export class ElecRadial extends ElecSankey {
         box-shadow: 0 0 20px rgba(74, 144, 217, 0.2);
       }
 
+      .node-circle.grid-export {
+        border-color: var(--grid-out-color, #8b5cf6);
+        color: var(--grid-out-color, #8b5cf6);
+      }
+      .node-circle.grid-export.active {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+      }
+
       .node-circle.battery {
         border-color: var(--batt-in-color, #4ecdc4);
         color: var(--batt-in-color, #4ecdc4);
       }
       .node-circle.battery.active {
         box-shadow: 0 0 20px rgba(78, 205, 196, 0.2);
+      }
+
+      .node-circle.battery-charge {
+        border-color: var(--batt-charge-color, #22c55e);
+        color: var(--batt-charge-color, #22c55e);
+      }
+      .node-circle.battery-charge.active {
+        box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
       }
 
       .node-circle.consumer {
